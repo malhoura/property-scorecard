@@ -1,0 +1,755 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Property Scorecard</title>
+<style>
+/* Layout: a survey-sheet workspace. Sticky control bar, ranking ledger on the left,
+   the selected ZIP's file on the right, the indicator grid underneath. */
+:root {
+  --bg: #f4f5f2;
+  --panel: #ffffff;
+  --ink: #1b2528;
+  --muted: #5d6a6d;
+  --line: #dde1dc;
+  --accent: #2c5a7a;
+  --accent-soft: #e3ecf2;
+  --ok: #2f7d4f;
+  --warn: #a86a12;
+  --bad: #b53a2e;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --radius: 8px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12181a; --panel: #1a2225; --ink: #e6ebea; --muted: #97a3a5; --line: #2c373a;
+    --accent: #7fb0d2; --accent-soft: #20313b; --ok: #5dbb84; --warn: #e0a548; --bad: #ec7568;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font-body); }
+a { color: var(--accent); }
+button, select, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.bar { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
+.bar-in { max-width: 1400px; margin: 0 auto; padding: 10px max(16px, 2vw); display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+.brand { font-family: var(--font-display); font-size: 20px; letter-spacing: .01em; margin-right: auto; display: flex; align-items: baseline; gap: 10px; }
+.brand small { font-family: var(--font-body); font-size: 12px; color: var(--muted); }
+.tabs { display: flex; gap: 2px; background: var(--line); padding: 2px; border-radius: 8px; }
+.tabs button { border: 0; background: transparent; padding: 5px 14px; border-radius: 6px; cursor: pointer; color: var(--muted); }
+.tabs button[aria-selected="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.ctl { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.ctl select, .ctl input { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font-size: 13px; }
+.db { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.db i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; }
+.db.ok i { background: var(--ok); } .db.err i { background: var(--bad); }
+.refresh { border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 12px; }
+
+main { max-width: 1400px; margin: 0 auto; padding: 18px max(16px, 2vw) 48px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+.banner { border: 1px solid var(--bad); background: color-mix(in srgb, var(--bad) 10%, var(--panel)); padding: 12px 14px; border-radius: var(--radius); }
+.banner b { color: var(--bad); }
+.banner code { font-family: var(--font-mono); font-size: 12px; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 10px; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; display: grid; gap: 2px; }
+.tile .k { font-size: 12px; color: var(--muted); }
+.tile .v { font-family: var(--font-display); font-size: 30px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.tile .s { font-size: 12px; color: var(--muted); }
+
+.split { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 980px) { .split { grid-template-columns: 1fr; } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; min-width: 0; }
+.card > h2 { font-size: 15px; font-weight: 600; margin: 0; }
+.note { font-size: 12px; color: var(--muted); margin: 3px 0 12px; }
+.sticky { position: sticky; top: 64px; max-height: calc(100vh - 80px); overflow: auto; }
+@media (max-width: 980px) { .sticky { position: static; max-height: none; } }
+
+.tools { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.tools input[type=search] { flex: 1; min-width: 160px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; }
+.chip { border: 1px solid var(--line); background: var(--bg); border-radius: 999px; padding: 4px 11px; font-size: 12px; cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th { text-align: left; font-size: 12px; font-weight: 600; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th button { all: unset; cursor: pointer; }
+th button:focus-visible { outline: 2px solid var(--accent); }
+th[aria-sort="ascending"] button::after { content: " ▲"; font-size: 9px; }
+th[aria-sort="descending"] button::after { content: " ▼"; font-size: 9px; }
+td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.num { text-align: right; }
+tr.pick { cursor: pointer; }
+tr.pick:hover td { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+tr.pick.sel td { background: var(--accent-soft); }
+tr.pick.sel td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.zipcell b { display: block; }
+.zipcell span { color: var(--muted); font-size: 12px; }
+
+.score { display: flex; align-items: center; gap: 8px; min-width: 120px; }
+.score span { width: 34px; text-align: right; font-weight: 600; }
+.track { position: relative; flex: 1; height: 8px; background: color-mix(in srgb, var(--ink) 8%, transparent); border-radius: 4px; }
+.track > i { position: absolute; inset: 0 auto 0 0; border-radius: 4px; }
+.track > u { position: absolute; top: -3px; bottom: -3px; width: 1px; background: var(--muted); opacity: .6; }
+
+.pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.pill.Buy { color: var(--ok); background: color-mix(in srgb, var(--ok) 15%, transparent); }
+.pill.Watch { color: var(--warn); background: color-mix(in srgb, var(--warn) 17%, transparent); }
+.pill.Avoid { color: var(--bad); background: color-mix(in srgb, var(--bad) 15%, transparent); }
+.up { color: var(--ok); } .down { color: var(--bad); } .flat { color: var(--muted); }
+.tag { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; margin-left: 4px; white-space: nowrap; }
+
+.dhead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+.dhead h2 { font-family: var(--font-display); font-weight: 400; font-size: 28px; margin: 0; }
+.dhead .big, .lensbox .big { font-family: var(--font-display); font-size: 26px; font-variant-numeric: tabular-nums; line-height: 1; }
+.lenses { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; margin-top: 6px; }
+.lensbox { display: grid; grid-template-columns: auto auto; align-items: center; gap: 4px 10px; border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 12px; min-width: 150px; }
+.lensbox.on { border-color: var(--accent); background: var(--accent-soft); }
+.lensbox .ln { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+.lensbox .rk { font-size: 11px; color: var(--muted); justify-self: end; }
+.lensbox .ln { grid-column: 1; } .lensbox .rk { grid-column: 2; grid-row: 1; }
+.pill.soft { font-weight: 500; }
+.sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.caps { margin-top: 10px; font-size: 12px; padding: 8px 10px; border-radius: 6px; background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin: 14px 0; }
+.cols h3, .sec h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 4px; font-weight: 600; }
+.cols p { margin: 0; }
+.sec { margin-top: 16px; }
+.hist svg { width: 100%; height: auto; display: block; }
+.ind td.val { min-width: 220px; }
+.ind .meta { font-size: 11px; color: var(--muted); }
+.ind .mini { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.ind .mini .track { width: 54px; flex: none; }
+.rc { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+.rc div { background: var(--bg); border-radius: 6px; padding: 8px 10px; }
+.rc b { display: block; font-size: 17px; font-variant-numeric: tabular-nums; }
+.rc span { font-size: 11px; color: var(--muted); }
+details { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 16px; }
+summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+.src td { font-size: 12px; }
+.src a { word-break: break-all; }
+.links { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; margin-top: 10px; }
+
+.heat { display: grid; gap: 3px; min-width: 760px; }
+.hrow { display: grid; grid-template-columns: 150px repeat(12, minmax(44px, 1fr)); gap: 3px; }
+.hrow.head div { font-size: 11px; color: var(--muted); line-height: 1.2; align-self: end; padding: 0 2px 4px; }
+.hrow.head small { display: block; font-family: var(--font-mono); opacity: .8; }
+.hz { font-size: 12px; cursor: pointer; display: flex; flex-direction: column; justify-content: center; padding-right: 6px; }
+.hz span { color: var(--muted); font-size: 11px; }
+.hrow.sel .hz b { color: var(--accent); }
+.hc { border-radius: 4px; text-align: center; padding: 8px 0; font-weight: 600; font-size: 12px; cursor: pointer; border: 1px solid transparent; }
+.hc.na { border: 1px dashed var(--line); color: var(--muted); font-weight: 400; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 10px; }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 4px; }
+
+.empty { text-align: center; color: var(--muted); padding: 36px 12px; }
+.empty b { color: var(--ink); display: block; margin-bottom: 4px; font-size: 15px; }
+.ihead { all: unset; cursor: help; text-decoration: underline dotted color-mix(in srgb, var(--muted) 70%, transparent); text-underline-offset: 3px; }
+.ihead:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+.tip .tiers { display: grid; grid-template-columns: auto 1fr; gap: 3px 8px; margin-top: 7px; }
+.tip .tiers b { font-weight: 600; }
+.tip .more { margin-top: 6px; color: var(--muted); font-size: 11px; }
+.guide { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 12px; }
+.gcard { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; scroll-margin-top: 80px; transition: box-shadow .3s; min-width: 0; }
+.gcard.flash { box-shadow: 0 0 0 2px var(--accent); }
+.gcard h3 { font-size: 14px; margin: 0; display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.gcard h3 small { font-size: 11px; color: var(--muted); font-weight: 400; white-space: nowrap; }
+.gcard p { margin: 4px 0 10px; font-size: 13px; }
+.scale { display: flex; gap: 2px; }
+.seg { flex: 1 1 0; min-width: 0; text-align: center; }
+.seg .m { height: 16px; font-size: 10.5px; font-weight: 700; white-space: nowrap; overflow: visible; }
+.seg .b { border-radius: 4px; padding: 6px 0; font-weight: 600; font-size: 12px; border: 2px solid transparent; }
+.seg.here .b { border-color: var(--ink); }
+.seg .l { font-size: 10.5px; color: var(--muted); margin-top: 3px; line-height: 1.2; overflow-wrap: anywhere; }
+.gnote { font-size: 11px; color: var(--muted); margin-top: 8px; }
+.ghere { font-size: 12px; margin-top: 8px; }
+.tip { position: fixed; z-index: 50; pointer-events: none; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 6px 20px rgba(0,0,0,.15); border-radius: 6px; padding: 8px 10px; font-size: 12px; max-width: 320px; }
+.tip .t { color: var(--muted); }
+[hidden] { display: none !important; }
+@media (max-width: 700px) { .hide-sm { display: none; } }
+</style>
+</head>
+<body>
+<div class="bar"><div class="bar-in">
+  <div class="brand">Property Scorecard <small id="dbname"></small></div>
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tab-ranking" aria-selected="true">ZIP ranking</button>
+    <button role="tab" id="tab-listings" aria-selected="false">Listings</button>
+  </div>
+  <label class="ctl" for="month">Month <select id="month"></select></label>
+  <label class="ctl" for="lens" title="Both lenses are scored for every ZIP; this picks which one ranks the list">Rank by <select id="lens"></select></label>
+  <span class="db" id="db"><i></i><span>Connecting…</span></span>
+  <button class="refresh" id="refresh" title="Reload from the database">Refresh</button>
+</div></div>
+
+<main>
+  <div class="banner" id="banner" hidden></div>
+
+  <section id="view-ranking">
+    <div class="tiles" id="tiles"></div>
+    <div class="split" style="margin-top:18px">
+      <section class="card">
+        <h2>Ranking</h2>
+        <p class="note" id="rank-note">Overall score out of 100. Buy at 70+, Watch at 50–69, Avoid under 50.</p>
+        <div class="tools">
+          <input type="search" id="rank-q" placeholder="Search ZIP, city, county" aria-label="Search ZIPs">
+          <button class="chip" data-v="Buy" aria-pressed="false">Buy</button>
+          <button class="chip" data-v="Watch" aria-pressed="false">Watch</button>
+          <button class="chip" data-v="Avoid" aria-pressed="false">Avoid</button>
+        </div>
+        <div class="scroll">
+          <table id="rank">
+            <thead><tr>
+              <th data-k="rank_in_month" aria-sort="ascending"><button>#</button></th>
+              <th data-k="zip"><button>ZIP</button></th>
+              <th data-k="overall_score"><button>Score</button></th>
+              <th data-k="verdict"><button>Verdict</button></th>
+              <th data-k="other_score" id="other-h" class="hide-sm"><button>Other lens</button></th>
+              <th data-k="score_change" class="num"><button>Change</button></th>
+              <th data-k="confidence" class="hide-sm"><button>Confidence</button></th>
+              <th data-k="est_monthly_rent" class="num hide-sm"><button>Rent</button></th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="empty" id="rank-empty" hidden><b>No evaluations for this month and lens</b>Pick another month or lens, or run the skill on some ZIPs.</div>
+      </section>
+      <aside class="card sticky" id="detail"><div class="empty"><b>Select a ZIP</b>Its indicators, history and sources appear here.</div></aside>
+    </div>
+    <section class="card" style="margin-top:18px">
+      <h2>Indicator grid</h2>
+      <p class="note">Each indicator scored 0–10 for every ZIP this month. The small number is the indicator's weight in the current lens. Dashed cells are n/a.</p>
+      <div class="scroll"><div class="heat" id="heat"></div></div>
+      <div class="legend"><span><i id="lg1"></i>7–10 excellent</span><span><i id="lg2"></i>4–6 good</span><span><i id="lg3"></i>0–3 bad</span><span>Hover an indicator name for a quick explanation; click it for its full scale.</span></div>
+    </section>
+    <section class="card" style="margin-top:18px" id="guide-card">
+      <h2>How each indicator is scored</h2>
+      <p class="note" id="guide-note">What each indicator measures and the value ranges behind each score. The outlined band is where the selected ZIP falls.</p>
+      <div class="guide" id="guide"></div>
+    </section>
+  </section>
+
+  <section id="view-listings" hidden>
+    <section class="card">
+      <h2>Listings</h2>
+      <p class="note">Individual properties saved by the skill, with their ZIP's latest score. Rent-to-price uses each listing's own rent estimate.</p>
+      <div class="tools">
+        <input type="search" id="lq" placeholder="Search address, ZIP, city" aria-label="Search listings">
+        <label class="ctl" for="lv">ZIP verdict <select id="lv"><option value="">Any</option><option>Buy</option><option>Watch</option><option>Avoid</option></select></label>
+        <label class="ctl" for="ls">Status <select id="ls"><option value="">Any</option><option selected>Active</option><option>Pending</option><option>Sold</option><option>Off market</option></select></label>
+        <label class="ctl" for="lp">Max price <input id="lp" type="number" min="0" step="10000" placeholder="Any" style="width:110px"></label>
+        <label class="ctl" for="lb">Min beds <input id="lb" type="number" min="0" step="1" placeholder="Any" style="width:70px"></label>
+      </div>
+      <div class="scroll">
+        <table id="lt">
+          <thead><tr>
+            <th data-k="address"><button>Address</button></th>
+            <th data-k="zip"><button>ZIP</button></th>
+            <th data-k="list_price" class="num" aria-sort="ascending"><button>Price</button></th>
+            <th data-k="beds" class="num"><button>Beds</button></th>
+            <th data-k="baths" class="num hide-sm"><button>Baths</button></th>
+            <th data-k="sqft" class="num hide-sm"><button>Sq ft</button></th>
+            <th data-k="est_monthly_rent" class="num hide-sm"><button>Rent est.</button></th>
+            <th data-k="rent_to_price" class="num"><button>Rent/price</button></th>
+            <th data-k="zip_score" id="lzip-h"><button>ZIP score</button></th>
+            <th data-k="status" class="hide-sm"><button>Status</button></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="empty" id="lempty" hidden></div>
+    </section>
+  </section>
+</main>
+<div class="tip" id="tip" hidden></div>
+
+<script>
+(() => {
+  // ---------- helpers
+  const $ = (s) => document.querySelector(s);
+  const el = (tag, props = {}, ...kids) => {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(props)) {
+      if (v == null) continue;
+      if (k === 'class') n.className = v;
+      else if (k === 'text') n.textContent = v;
+      else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+      else if (k === 'style') n.style.cssText = v;
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids.flat()) if (c != null && c !== false) n.append(c.nodeType ? c : document.createTextNode(String(c)));
+    return n;
+  };
+  const num = (v) => (v == null || v === '' ? null : Number(v));
+  const f1 = (v) => (v == null ? '—' : Number(v).toFixed(1));
+  const money = (v) => (v == null ? '—' : '$' + Math.round(Number(v)).toLocaleString('en-US'));
+  const int = (v) => (v == null ? '—' : Number(v).toLocaleString('en-US'));
+  const signed = (v) => (v == null ? '—' : (v > 0 ? '+' : v < 0 ? '−' : '±') + Math.abs(v).toFixed(1));
+  const band = (s) => (s == null ? null : s >= 7 ? 'ok' : s >= 4 ? 'warn' : 'bad');
+  const tint = (s) => { const b = band(s); if (!b) return 'transparent'; const p = b === 'ok' ? 14 + s * 3 : b === 'warn' ? 22 : 32 - s * 3; return `color-mix(in srgb, var(--${b}) ${p}%, transparent)`; };
+  // What each indicator means and its scoring bands (from the skill's Step 3; the exact rule
+  // text from the database is shown under each scale so the two can be compared).
+  const pct = (v, d = 1) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(d)}%`;
+  const G = {
+    1: { what: 'Year-over-year change in the number of jobs in the metro area. Growing employment brings new renters and buyers.',
+         fmt: (v) => pct(v), note: 'Minus 1 point if local unemployment is more than 1 point above the US rate.',
+         bands: [['below −1%', 0, null, -1], ['−1 to 0%', 2, -1, 0], ['0–1%', 4, 0, 1], ['1–2%', 6, 1, 2], ['2–3%', 8, 2, 3], ['3%+', 10, 3, null]] },
+    2: { what: 'Year-over-year change in the average weekly wage in the county. Rising pay supports rising rents and prices.',
+         fmt: (v) => pct(v), bands: [['below 0%', 0, null, 0], ['0–2%', 2, 0, 2], ['2–3%', 4, 2, 3], ['3–4%', 6, 3, 4], ['4–5%', 8, 4, 5], ['5%+', 10, 5, null]] },
+    3: { what: 'People moving into the county minus people leaving, per 1,000 residents, over the latest year. In-migration is new housing demand.',
+         fmt: (v) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(1)} per 1,000`, note: 'In town mode, ±2 when the town grows much faster or slower than its county.',
+         bands: [['below −2', 0, null, -2], ['−2 to 0', 2, -2, 0], ['0–2', 4, 0, 2], ['2–5', 6, 2, 5], ['5–10', 8, 5, 10], ['10+', 10, 10, null]] },
+    4: { what: 'Share of metro jobs in its single largest industry. Lower means a more diversified economy that is less exposed to one sector.',
+         fmt: (v) => `${v.toFixed(1)}% of jobs`, note: 'Minus 2 if one employer has more than 10% of metro jobs.',
+         bands: [['over 50%', 0, 50, null], ['35–50%', 2, 35, 50], ['25–35%', 4, 25, 35], ['20–25%', 6, 20, 25], ['15–20%', 8, 15, 20], ['15% or less', 10, null, 15]] },
+    5: { what: 'Typical home value divided by median household income in the ZIP. Lower means homes are more affordable for local earners.',
+         fmt: (v) => `${v.toFixed(2)}×`, bands: [['over 8×', 0, 8, null], ['6–8×', 2, 6, 8], ['5–6×', 4, 5, 6], ['4–5×', 6, 4, 5], ['3–4×', 8, 3, 4], ['3× or less', 10, null, 3]] },
+    6: { what: 'Median days a home sits on the market before it sells, county. Fewer days means stronger buyer demand.',
+         fmt: (v) => `${Math.round(v)} days`, note: 'Minus 2 if days on market rose more than 25% in a year; plus 1 if it fell more than 10%.',
+         bands: [['over 90', 0, 91, null], ['61–90', 2, 61, 90.99], ['46–60', 4, 46, 60.99], ['31–45', 6, 31, 45.99], ['21–30', 8, 21, 30.99], ['20 or less', 10, null, 20.99]] },
+    7: { what: 'How many months current listings would take to sell at today\'s pace. Around 4–6 is balanced; under 2 means bidding wars and overpaying, over 9 means a glut.',
+         fmt: (v) => `${v.toFixed(1)} months`,
+         bands: [['under 2', 4, null, 2], ['2–3', 6, 2, 3], ['3–4', 8, 3, 4], ['4–6', 10, 4, 6], ['6–7', 7, 6, 7], ['7–9', 4, 7, 9], ['over 9', 1, 9, null]] },
+    8: { what: 'Long-run yearly home price growth, ideally from the ZIP\'s 10-year Zillow index. Steady 3–7% is best; very fast growth can signal a bubble.',
+         fmt: (v) => `${pct(v)} a year`, note: 'Minus 3 if the last year jumped over 10% and more than double the long-run rate; minus 2 if prices fell more than 5% in the last year.',
+         bands: [['below 0%', 1, null, 0], ['0–2%', 4, 0, 2], ['2–3%', 7, 2, 3], ['3–7%', 10, 3, 7], ['7–9%', 7, 7, 9], ['9–12%', 4, 9, 12], ['over 12%', 1, 12, null]] },
+    9: { what: 'Monthly rent divided by home value: the core test of rental return. The classic "1% rule" sits at the top of the scale.',
+         fmt: (v) => `${v.toFixed(2)}% a month`, bands: [['under 0.5%', 0, null, 0.5], ['0.5–0.6%', 2, 0.5, 0.6], ['0.6–0.7%', 4, 0.6, 0.7], ['0.7–0.8%', 6, 0.7, 0.8], ['0.8–1.0%', 8, 0.8, 1.0], ['1.0%+', 10, 1.0, null]] },
+    10: { what: 'Gap between the highest and lowest 30-year mortgage rate over the past year (national). A smaller gap means more predictable financing costs.',
+          fmt: (v) => `${v.toFixed(2)} pt range`, bands: [['over 2.0 pt', 0, 2, null], ['1.5–2.0', 2, 1.5, 2], ['1.0–1.5', 4, 1, 1.5], ['0.75–1.0', 6, 0.75, 1], ['0.5–0.75', 8, 0.5, 0.75], ['0.5 or less', 10, null, 0.5]] },
+    11: { what: 'Funded or under-construction projects within about 5 miles: schools, hospitals, transit and roads, commercial hubs, major employers. Proposals don\'t count as funded.',
+          fmt: (v) => `${Math.round(v)} funded`, byScore: true,
+          bands: [['closures / employer leaving', 0], ['none found', 2], ['proposed only', 4], ['1 funded', 6], ['2 funded', 8], ['3+ funded', 10]] },
+    12: { what: 'New homes permitted per 1,000 residents in the latest year, county. Healthy building signals demand; too much risks oversupply.',
+          fmt: (v) => `${v.toFixed(1)} per 1,000`,
+          bands: [['under 1', 1, null, 1], ['1–2', 3, 1, 2], ['2–4', 6, 2, 4], ['4–6', 8, 4, 6], ['6–10', 10, 6, 10], ['10–14', 8, 10, 14], ['over 14', 5, 14, null]] },
+  };
+  const tierOf = (s) => (s >= 7 ? 'Excellent' : s >= 4 ? 'Good' : 'Bad');
+  const tierColor = { Excellent: 'var(--ok)', Good: 'var(--warn)', Bad: 'var(--bad)' };
+  // Which band a value falls in; on a boundary the higher-scoring band wins (as in the skill).
+  function locate(no, value, score) {
+    const g = G[no]; if (!g) return -1;
+    if (!g.byScore && value != null) {
+      // Stored values are rounded (0.96 shows as 1.0), so allow a little slack at the edges and
+      // prefer the band whose score matches the one actually given.
+      const slack = 0.05;
+      const hits = [];
+      g.bands.forEach((band, i) => {
+        const [, , lo, hi] = band;
+        if ((lo == null || value >= lo - slack) && (hi == null || value <= hi + slack)) hits.push(i);
+      });
+      const exact = hits.find((i) => g.bands[i][1] === score);
+      if (exact != null) return exact;
+      if (hits.length) return hits.reduce((x, y) => (g.bands[y][1] > g.bands[x][1] ? y : x));
+    }
+    if (score == null) return -1;
+    return g.bands.findIndex((b) => b[1] === score);
+  }
+  function indTip(e, no, name, weight) {
+    const g = G[no]; if (!g) return;
+    const t = $('#tip'); t.textContent = '';
+    const tiers = el('div', { class: 'tiers' });
+    ['Excellent', 'Good', 'Bad'].forEach((k) => {
+      const ranges = g.bands.filter((b) => tierOf(b[1]) === k).map((b) => b[0]);
+      if (ranges.length) tiers.append(el('b', { text: k, style: `color:${tierColor[k]}` }), el('span', { text: ranges.join(', ') }));
+    });
+    t.append(el('div', { style: 'font-weight:600', text: `${name}${weight != null ? ` · weight ${weight}` : ''}` }), el('div', { text: g.what, style: 'margin-top:2px' }), tiers,
+      el('div', { class: 'more', text: 'Click for the full scale' }));
+    t.hidden = false;
+    const r = e.currentTarget.getBoundingClientRect();
+    const x = Math.min(window.innerWidth - t.offsetWidth - 8, Math.max(8, r.left + r.width / 2 - t.offsetWidth / 2));
+    const y = r.bottom + 6 + t.offsetHeight > window.innerHeight ? r.top - t.offsetHeight - 6 : r.bottom + 6;
+    t.style.left = x + 'px'; t.style.top = y + 'px';
+  }
+  function indName(no, name, weight) {
+    return el('button', { class: 'ihead', type: 'button', text: name, 'aria-describedby': 'tip',
+      onmouseenter: (e) => indTip(e, no, name, weight), onfocus: (e) => indTip(e, no, name, weight),
+      onmouseleave: () => { $('#tip').hidden = true; }, onblur: () => { $('#tip').hidden = true; },
+      onclick: () => { $('#tip').hidden = true; const c = document.getElementById('guide-' + no); if (!c) return;
+        c.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
+        c.classList.add('flash'); setTimeout(() => c.classList.remove('flash'), 1600); } });
+  }
+
+  const verdictColor = (v) => ({ Buy: 'var(--ok)', Watch: 'var(--warn)', Avoid: 'var(--bad)' }[v] || 'var(--muted)');
+  const months = (m) => { if (!m) return ''; const [y, mo] = m.split('-'); return new Date(Date.UTC(+y, +mo - 1, 1)).toLocaleString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' }); };
+  const store = { get(k, d) { try { return localStorage.getItem('psc.' + k) ?? d; } catch { return d; } }, set(k, v) { try { localStorage.setItem('psc.' + k, v); } catch {} } };
+
+  async function api(path) {
+    const r = await fetch('/api/' + path, { cache: 'no-store' });
+    let body = null; try { body = await r.json(); } catch {}
+    if (!r.ok) throw new Error((body && body.error) || `Request failed (${r.status})`);
+    return body;
+  }
+
+  // ---------- state
+  const S = { overview: null, ranking: null, detail: null, listings: null, zip: null,
+              rankSort: { k: 'rank_in_month', dir: 1 }, verdicts: new Set(), q: '',
+              lSort: { k: 'list_price', dir: 1 }, thresholds: { Buy: 70, Watch: 50 } };
+
+  function showError(msg) {
+    const b = $('#banner'); b.hidden = !msg; b.textContent = '';
+    if (!msg) return;
+    b.append(el('b', { text: "Couldn't load data. " }), msg, el('br'),
+      el('span', { text: 'Check that Postgres is running (' }), el('code', { text: 'brew services list' }),
+      el('span', { text: '), then press Refresh. The terminal running the app shows more detail.' }));
+    const d = $('#db'); d.className = 'db err'; d.lastChild.textContent = 'Not connected';
+  }
+
+  // ---------- boot
+  async function boot() {
+    try {
+      S.overview = await api('overview');
+      showError(null);
+      const o = S.overview;
+      $('#db').className = 'db ok';
+      $('#db').lastChild.textContent = `${o.zips} ZIPs · ${o.evaluations} evaluations · ${o.listings} listings`;
+      $('#dbname').textContent = `${o.db_name} · ${o.db_user}`;
+      const ms = $('#month'), ls = $('#lens');
+      const keepM = ms.value || store.get('month', ''), keepL = ls.value || store.get('lens', 'Rental');
+      ms.textContent = ''; ls.textContent = '';
+      o.months.forEach((m) => ms.append(el('option', { value: m, text: months(m) })));
+      const lenses = o.lenses.length ? o.lenses : ['Rental'];
+      lenses.forEach((l) => ls.append(el('option', { value: l, text: l })));
+      ms.value = o.months.includes(keepM) ? keepM : (o.months[0] || '');
+      ls.value = lenses.includes(keepL) ? keepL : lenses[0];
+      await Promise.all([loadRanking(), loadListings()]);
+    } catch (e) { showError(e.message); }
+  }
+
+  async function loadRanking() {
+    const m = $('#month').value, l = $('#lens').value;
+    if (!m) { S.ranking = { rows: [], grid: [], indicators: [] }; renderRanking(); return; }
+    S.ranking = await api(`ranking?month=${encodeURIComponent(m)}&lens=${encodeURIComponent(l)}`);
+    if (S.ranking.thresholds) S.thresholds = S.ranking.thresholds;
+    const rows = S.ranking.rows;
+    const wanted = S.zip || (location.hash.match(/zip=(\d{5})/) || [])[1];
+    S.zip = rows.some((r) => r.zip === wanted) ? wanted : (rows[0] && rows[0].zip) || null;
+    renderRanking();
+    await loadDetail();
+  }
+
+  async function loadDetail() {
+    if (!S.zip) { S.detail = null; renderDetail(); return; }
+    const zip = S.zip;
+    S.detail = await api(`zip?zip=${zip}&month=${encodeURIComponent($('#month').value)}&lens=${encodeURIComponent($('#lens').value)}`);
+    if (zip === S.zip) renderDetail();
+  }
+
+  async function loadListings() { S.listings = await api('listings'); renderListings(); }
+
+  function pick(zip) {
+    S.zip = zip;
+    history.replaceState(null, '', '#ranking&zip=' + zip);
+    renderRanking();
+    loadDetail().catch((e) => showError(e.message));
+  }
+
+  // ---------- ranking
+  function renderRanking() {
+    const R = S.ranking || { rows: [], grid: [], indicators: [] };
+    const rows = R.rows;
+    // tiles
+    const t = $('#tiles'); t.textContent = '';
+    const cnt = (v) => rows.filter((r) => r.verdict === v).length;
+    const avg = rows.length ? rows.reduce((s, r) => s + num(r.overall_score), 0) / rows.length : null;
+    const movers = rows.filter((r) => r.score_change != null).sort((a, b) => Math.abs(b.score_change) - Math.abs(a.score_change));
+    const tile = (k, v, s, color) => el('div', { class: 'tile' }, el('span', { class: 'k', text: k }), el('span', { class: 'v', text: v, style: color ? `color:${color}` : null }), s ? el('span', { class: 's', text: s }) : null);
+    t.append(
+      tile('ZIPs scored', String(rows.length), months($('#month').value)),
+      tile(`Buy (${S.thresholds.Buy}+)`, String(cnt('Buy')), null, 'var(--ok)'),
+      tile(`Watch (${S.thresholds.Watch}–${S.thresholds.Buy - 1})`, String(cnt('Watch')), null, 'var(--warn)'),
+      tile(`Avoid (under ${S.thresholds.Watch})`, String(cnt('Avoid')), null, 'var(--bad)'),
+      tile('Average score', f1(avg), rows.length ? `Top: ${rows[0].zip} ${rows[0].city}` : null),
+      tile('Biggest move', movers.length ? signed(movers[0].score_change) : '—', movers.length ? `${movers[0].zip} vs ${months(movers[0].prev_month)}` : 'Needs a second month',
+           movers.length ? (movers[0].score_change > 0 ? 'var(--ok)' : 'var(--bad)') : null)
+    );
+
+    // table
+    const q = S.q.trim().toLowerCase();
+    let list = rows.filter((r) => (!S.verdicts.size || S.verdicts.has(r.verdict)) &&
+      (!q || [r.zip, r.city, r.state, r.county_name].join(' ').toLowerCase().includes(q)));
+    const { k, dir } = S.rankSort;
+    list = list.slice().sort((a, b) => {
+      const x = a[k], y = b[k];
+      if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
+      return (typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y))) * dir;
+    });
+    document.querySelectorAll('#rank th').forEach((th) => th.setAttribute('aria-sort', th.dataset.k === k ? (dir > 0 ? 'ascending' : 'descending') : 'none'));
+    const other = (rows.find((r) => r.other_lens) || {}).other_lens;
+    $('#other-h button').textContent = other ? `${other} lens` : 'Other lens';
+    const tb = $('#rank tbody'); tb.textContent = '';
+    list.forEach((r) => {
+      const s = num(r.overall_score);
+      const ch = num(r.score_change);
+      const tr = el('tr', { class: 'pick' + (r.zip === S.zip ? ' sel' : ''), tabindex: '0', onclick: () => pick(r.zip),
+        onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(r.zip); } } },
+        el('td', { text: String(r.rank_in_month) }),
+        el('td', { class: 'zipcell' }, el('b', { text: r.zip }), el('span', { text: `${r.city}, ${r.state}` }),
+          r.town_mode ? el('span', { class: 'tag', text: 'town' }) : null,
+          r.active_listings ? el('span', { class: 'tag', text: `${r.active_listings} listing${r.active_listings > 1 ? 's' : ''}` }) : null),
+        el('td', {}, scoreBar(s, 100, verdictColor(r.verdict))),
+        el('td', {}, el('span', { class: 'pill ' + r.verdict, text: r.verdict }), r.caps_active ? el('span', { class: 'tag', title: r.caps_active, text: 'capped' }) : null),
+        el('td', { class: 'hide-sm', title: r.other_lens ? `${r.other_lens} lens: rank ${r.other_rank}` : null },
+          r.other_score != null ? el('span', { class: 'pill soft ' + r.other_verdict, text: `${f1(r.other_score)} ${r.other_verdict}` }) : '—'),
+        el('td', { class: 'num ' + (ch == null ? 'flat' : ch > 0 ? 'up' : ch < 0 ? 'down' : 'flat'), title: r.prev_month ? `vs ${months(r.prev_month)}${r.verdict_changed ? ' · was ' + r.prev_verdict : ''}` : 'First month' },
+          ch == null ? 'new' : signed(ch), r.verdict_changed ? ' ●' : ''),
+        el('td', { class: 'hide-sm', text: r.confidence }),
+        el('td', { class: 'num hide-sm', text: money(r.est_monthly_rent) })
+      );
+      tb.append(tr);
+    });
+    $('#rank-empty').hidden = rows.length > 0;
+    renderHeat(R, rows);
+  }
+
+  function scoreBar(v, max, color) {
+    const tr = el('div', { class: 'track' }, el('i', { style: `width:${v == null ? 0 : Math.max(0, Math.min(100, v / max * 100))}%;background:${color}` }));
+    if (max === 100) { tr.append(el('u', { style: `left:${S.thresholds.Watch}%` }), el('u', { style: `left:${S.thresholds.Buy}%` })); }
+    return el('div', { class: 'score' }, el('span', { text: max === 100 ? f1(v) : (v == null ? 'n/a' : String(v)) }), tr);
+  }
+
+  function renderHeat(R, rows) {
+    const h = $('#heat'); h.textContent = '';
+    if (!rows.length) return;
+    const inds = R.indicators;
+    h.append(el('div', { class: 'hrow head' }, el('div'), inds.map((i) => el('div', {}, indName(Number(i.indicator_no), i.indicator_name, Number(i.weight)), el('small', { text: String(Number(i.weight)) })))));
+    const byZip = new Map();
+    R.grid.forEach((g) => { if (!byZip.has(g.zip)) byZip.set(g.zip, new Map()); byZip.get(g.zip).set(Number(g.indicator_no), g); });
+    rows.forEach((r) => {
+      const m = byZip.get(r.zip) || new Map();
+      h.append(el('div', { class: 'hrow' + (r.zip === S.zip ? ' sel' : '') },
+        el('div', { class: 'hz', onclick: () => pick(r.zip) }, el('b', { text: r.zip }), el('span', { text: r.city })),
+        inds.map((i) => {
+          const g = m.get(Number(i.indicator_no)); const s = g ? num(g.score) : null;
+          return el('div', { class: 'hc' + (s == null ? ' na' : ''), style: `background:${tint(s)}`, text: s == null ? 'n/a' : String(s),
+            onclick: () => pick(r.zip),
+            onmouseenter: (e) => tip(e, `${r.zip} · ${i.indicator_name}`, s == null ? 'n/a' : `Score ${s} / 10`, g ? g.value_text : ''),
+            onmouseleave: () => { $('#tip').hidden = true; } });
+        })));
+    });
+  }
+
+  function tip(e, a, b, c) {
+    const t = $('#tip'); t.textContent = '';
+    t.append(el('div', { class: 't', text: a }), el('div', { text: b, style: 'font-weight:600' }), c ? el('div', { text: c, style: 'margin-top:3px' }) : null);
+    t.hidden = false;
+    const r = e.currentTarget.getBoundingClientRect();
+    const x = Math.min(window.innerWidth - t.offsetWidth - 8, Math.max(8, r.left + r.width / 2 - t.offsetWidth / 2));
+    const y = r.bottom + 6 + t.offsetHeight > window.innerHeight ? r.top - t.offsetHeight - 6 : r.bottom + 6;
+    t.style.left = x + 'px'; t.style.top = y + 'px';
+  }
+
+  // ---------- indicator guide
+  function renderGuide() {
+    const box = $('#guide'); box.textContent = '';
+    const inds = (S.ranking && S.ranking.indicators) || [];
+    if (!inds.length) return;
+    const D = S.detail && S.detail.evaluation ? S.detail : null;
+    const mine = new Map(((D && D.indicators) || []).map((i) => [Number(i.indicator_no), i]));
+    $('#guide-note').textContent = D
+      ? `What each indicator measures and the value ranges behind each score. The outlined band is where ${D.evaluation.zip} ${D.evaluation.city} falls; pick another ZIP to compare.`
+      : 'What each indicator measures and the value ranges behind each score.';
+    inds.forEach((ind) => {
+      const no = Number(ind.indicator_no), g = G[no];
+      if (!g) return;
+      const v = mine.get(no);
+      const val = v ? num(v.value_num) : null, sc = v ? num(v.score) : null;
+      const at = v && sc != null ? locate(no, val, sc) : -1;
+      const scale = el('div', { class: 'scale', role: 'img', 'aria-label': `${ind.indicator_name} scale: ` + g.bands.map((b) => `${b[0]} scores ${b[1]}`).join('; ') });
+      g.bands.forEach((b, i) => scale.append(el('div', { class: 'seg' + (i === at ? ' here' : '') },
+        el('div', { class: 'm', text: i === at ? '▼' : '' }),
+        el('div', { class: 'b', style: `background:${tint(b[1])}`, text: String(b[1]) }),
+        el('div', { class: 'l', text: b[0] }))));
+      let here = null;
+      if (D && v) {
+        here = sc == null
+          ? el('div', { class: 'ghere sub', text: `${D.evaluation.zip}: n/a (no current figure)` })
+          : el('div', { class: 'ghere' }, el('b', { text: `${D.evaluation.zip}: ` }),
+              val != null && !g.byScore ? g.fmt(val) : (at >= 0 ? g.bands[at][0] : ''),
+              ` → scored ${sc} (`, el('span', { text: tierOf(sc), style: `color:${tierColor[tierOf(sc)]};font-weight:600` }), ')',
+              at >= 0 && g.bands[at][1] !== sc && g.note ? el('span', { class: 'sub', text: ' after adjustment (see note)' }) : null);
+      }
+      box.append(el('article', { class: 'gcard', id: 'guide-' + no },
+        el('h3', {}, ind.indicator_name, el('small', { text: `weight ${Number(ind.weight)} of 100` })),
+        el('p', { text: g.what }), scale, here,
+        g.note ? el('div', { class: 'gnote', text: g.note }) : null));
+    });
+  }
+
+  // ---------- detail
+  function renderDetail() {
+    renderGuide();
+    const d = $('#detail'); d.textContent = '';
+    const D = S.detail;
+    if (!D || !D.evaluation) { d.append(el('div', { class: 'empty' }, el('b', { text: 'Select a ZIP' }), 'Its indicators, history and sources appear here.')); return; }
+    const e = D.evaluation, z = D.zip || {};
+    d.append(
+      el('div', { class: 'dhead' },
+        el('h2', { text: `${e.zip} · ${e.city}` }),
+        el('div', { class: 'lenses' }, (D.lenses && D.lenses.length ? D.lenses : [{ lens: e.lens, overall_score: e.overall_score, verdict: e.verdict, rank_in_month: e.rank_in_month, zips_in_month: e.zips_in_month }]).map((x) =>
+          el('div', { class: 'lensbox' + (x.lens === e.lens ? ' on' : ''), title: x.caps_active ? `Held at Watch: ${x.caps_active}` : null },
+            el('span', { class: 'ln', text: x.lens }),
+            el('span', { class: 'big', text: f1(x.overall_score) }),
+            el('span', { class: 'pill ' + x.verdict, text: x.verdict }),
+            el('span', { class: 'rk', text: `#${x.rank_in_month} of ${x.zips_in_month}` }))))),
+      el('div', { class: 'sub', text: [z.county_name, z.cbsa_name, `${e.confidence} confidence`, z.town_mode ? `town mode: ${z.town_name || e.city}` : null, `evaluated ${e.eval_date}`].filter(Boolean).join(' · ') })
+    );
+    if (e.caps_active) d.append(el('div', { class: 'caps', text: `Verdict held at Watch: ${e.caps_active}.` }));
+
+    // history
+    const H = D.history || [];
+    const hs = el('div', { class: 'sec hist' }, el('h3', { text: 'Score by month' }));
+    hs.append(H.length > 1 ? historyChart(H) : el('div', { class: 'sub', text: H.length ? `First month on record (${months(H[0].month)}). The trend appears after the next monthly run.` : 'No history yet.' }));
+    d.append(hs);
+
+    d.append(el('div', { class: 'cols' },
+      el('div', {}, el('h3', { text: 'Strengths' }), el('p', { text: e.top_strengths || '—' })),
+      el('div', {}, el('h3', { text: 'Red flags' }), el('p', { text: e.red_flags || '—' }))));
+
+    // indicators
+    const tb = el('tbody');
+    (D.indicators || []).forEach((i) => {
+      const s = num(i.score), ch = num(i.score_change);
+      tb.append(el('tr', {},
+        el('td', {}, el('b', {}, indName(Number(i.indicator_no), i.indicator_name, Number(i.weight))), el('div', { class: 'meta', text: i.rental_weight != null && i.primary_weight != null ? `weight: rental ${Number(i.rental_weight)} · primary ${Number(i.primary_weight)}` : `weight ${Number(i.weight)}` })),
+        el('td', {}, el('span', { class: 'mini' }, el('span', { text: s == null ? 'n/a' : String(s), style: 'width:22px;text-align:right;font-weight:600' }),
+          el('span', { class: 'track' }, el('i', { style: `width:${s == null ? 0 : s * 10}%;background:var(--${band(s) || 'muted'})` }))),
+          ch ? el('div', { class: 'meta ' + (ch > 0 ? 'up' : 'down'), text: `${ch > 0 ? '▲' : '▼'} ${Math.abs(ch)} vs last month` }) : null),
+        el('td', { class: 'val' }, i.value_text || '—', el('div', { class: 'meta', text: [i.geography_level, i.period_label].filter(Boolean).join(' · ') }))));
+    });
+    d.append(el('div', { class: 'sec' }, el('h3', { text: '12 indicators' }),
+      el('div', { class: 'scroll' }, el('table', { class: 'ind' }, el('thead', {}, el('tr', {}, el('th', { text: 'Indicator' }), el('th', { text: 'Score' }), el('th', { text: 'Value' }))), tb))));
+
+    // RentCast
+    const v = D.validation;
+    const vs = el('div', { class: 'sec' }, el('h3', { text: 'RentCast check' }));
+    if (!v) vs.append(el('div', { class: 'sub', text: 'Not checked for this evaluation.' }));
+    else if (v.skipped_reason) vs.append(el('div', { class: 'sub', text: v.skipped_reason }));
+    else {
+      const box = (val, lab) => el('div', {}, el('b', { text: val }), el('span', { text: lab }));
+      vs.append(el('div', { class: 'rc' },
+        box(money(v.rentcast_median_rent), 'median rent'),
+        box(int(v.rentcast_rental_listings), 'rental listings'),
+        box(v.rentcast_sale_listings_yoy_pct == null ? '—' : signed(num(v.rentcast_sale_listings_yoy_pct)) + '%', 'for-sale listings YoY'),
+        box(v.rentcast_sale_median_dom == null ? '—' : `${num(v.rentcast_sale_median_dom)} days`, 'median DOM (sale)')));
+      if (v.flags && v.flags.length) vs.append(el('div', { class: 'sub', style: 'margin-top:6px', text: 'Flags: ' + v.flags.join(', ') }));
+      if (v.notes) vs.append(el('p', { class: 'sub', style: 'margin-top:6px', text: v.notes }));
+    }
+    d.append(vs);
+
+    // sources
+    const src = D.sources || [];
+    const st = el('tbody');
+    src.forEach((s) => st.append(el('tr', {},
+      el('td', { text: s.indicator_label || '' }),
+      el('td', {}, s.value_text || '', el('div', { class: 'meta', text: [s.geography_level, s.period_label, s.source_tier].filter(Boolean).join(' · ') })),
+      el('td', {}, /^https?:\/\//.test(s.url || '') ? el('a', { href: s.url, target: '_blank', rel: 'noopener', text: s.source_title || s.url }) : (s.source_title || '') + (s.url ? ` (${s.url})` : '')))));
+    d.append(el('details', {}, el('summary', { text: `Sources (${src.length})` }),
+      el('div', { class: 'scroll' }, el('table', { class: 'src ind' }, el('thead', {}, el('tr', {}, el('th', { text: 'Indicator' }), el('th', { text: 'Figure' }), el('th', { text: 'Source' }))), st))));
+
+    const links = [['Zillow home values', z.zillow_home_values_url], ['Zillow rentals', z.zillow_rental_url], ['BLS metro data', z.bls_eag_url]].filter((x) => x[1]);
+    if (links.length) d.append(el('div', { class: 'links' }, links.map(([t, u]) => el('a', { href: u, target: '_blank', rel: 'noopener', text: t + ' ↗' }))));
+  }
+
+  function historyChart(H) {
+    const W = 520, Ht = 150, m = { l: 30, r: 62, t: 14, b: 24 };
+    const xs = (i) => m.l + (H.length === 1 ? 0 : i * (W - m.l - m.r) / (H.length - 1));
+    const lo = Math.min(30, ...H.map((h) => num(h.overall_score))) , hi = Math.max(80, ...H.map((h) => num(h.overall_score)));
+    const ys = (v) => m.t + (hi - v) / (hi - lo) * (Ht - m.t - m.b);
+    const ns = 'http://www.w3.org/2000/svg';
+    const s = (tag, a, text) => { const n = document.createElementNS(ns, tag); for (const k in a) n.setAttribute(k, a[k]); if (text != null) n.textContent = text; return n; };
+    const svg = s('svg', { viewBox: `0 0 ${W} ${Ht}`, role: 'img', 'aria-label': 'Overall score by month' });
+    [[S.thresholds.Buy, 'Buy'], [S.thresholds.Watch, 'Watch']].forEach(([v, lab]) => {
+      svg.append(s('line', { x1: m.l, x2: W - m.r, y1: ys(v), y2: ys(v), stroke: 'var(--line)', 'stroke-dasharray': '4 4' }));
+      svg.append(s('text', { x: W - m.r + 10, y: ys(v) + 4, 'font-size': 10, fill: 'var(--muted)' }, `${lab} ${v}`));
+    });
+    const pts = H.map((h, i) => [xs(i), ys(num(h.overall_score))]);
+    svg.append(s('polyline', { points: pts.map((p) => p.join(',')).join(' '), fill: 'none', stroke: 'var(--accent)', 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+    const every = Math.ceil(H.length / 6);
+    H.forEach((h, i) => {
+      svg.append(s('circle', { cx: pts[i][0], cy: pts[i][1], r: i === H.length - 1 ? 4 : 3, fill: verdictColor(h.verdict) }));
+      if (i % every === 0 || i === H.length - 1) svg.append(s('text', { x: pts[i][0], y: Ht - 6, 'font-size': 10, fill: 'var(--muted)', 'text-anchor': 'middle' }, months(h.month)));
+    });
+    const last = H[H.length - 1];
+    svg.append(s('text', { x: pts[pts.length - 1][0], y: pts[pts.length - 1][1] + 16, 'font-size': 11, 'font-weight': 600, fill: 'var(--ink)', 'text-anchor': 'middle' }, f1(last.overall_score)));
+    return svg;
+  }
+
+  // ---------- listings
+  function renderListings() {
+    const lensKey = $('#lens').value === 'Primary' ? 'primary' : 'rental';
+    $('#lzip-h button').textContent = `ZIP score (${$('#lens').value || 'Rental'})`;
+    const L = (S.listings || []).map((r) => ({ ...r, zip_score: r[`zip_${lensKey}_score`], zip_verdict: r[`zip_${lensKey}_verdict`] }));
+    const q = $('#lq').value.trim().toLowerCase(), v = $('#lv').value, st = $('#ls').value;
+    const maxP = num($('#lp').value), minB = num($('#lb').value);
+    let list = L.filter((r) => (!q || [r.address, r.zip, r.city, r.state].join(' ').toLowerCase().includes(q)) &&
+      (!v || r.zip_verdict === v) && (!st || r.status === st) &&
+      (maxP == null || (r.list_price != null && num(r.list_price) <= maxP)) && (minB == null || (r.beds != null && num(r.beds) >= minB)));
+    const { k, dir } = S.lSort;
+    list = list.slice().sort((a, b) => {
+      const x = a[k], y = b[k];
+      if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
+      return (typeof x === 'number' ? x - y : String(x).localeCompare(String(y))) * dir;
+    });
+    document.querySelectorAll('#lt th').forEach((th) => th.setAttribute('aria-sort', th.dataset.k === k ? (dir > 0 ? 'ascending' : 'descending') : 'none'));
+    const tb = $('#lt tbody'); tb.textContent = '';
+    list.forEach((r) => {
+      const rtp = num(r.rent_to_price);
+      tb.append(el('tr', {},
+        el('td', {}, r.listing_url && /^https?:\/\//.test(r.listing_url) ? el('a', { href: r.listing_url, target: '_blank', rel: 'noopener', text: r.address || r.listing_url }) : (r.address || '—'),
+          el('div', { class: 'meta sub', text: [r.property_type, r.year_built ? `built ${r.year_built}` : null, r.days_on_market != null ? `${r.days_on_market} days listed` : null].filter(Boolean).join(' · ') })),
+        el('td', { class: 'zipcell' }, el('b', { text: r.zip }), el('span', { text: r.city || '' })),
+        el('td', { class: 'num', text: money(r.list_price) }),
+        el('td', { class: 'num', text: r.beds == null ? '—' : String(num(r.beds)) }),
+        el('td', { class: 'num hide-sm', text: r.baths == null ? '—' : String(num(r.baths)) }),
+        el('td', { class: 'num hide-sm', text: int(r.sqft) }),
+        el('td', { class: 'num hide-sm', text: money(r.est_monthly_rent) }),
+        el('td', { class: 'num', style: rtp == null ? null : `color:var(--${rtp >= 0.8 ? 'ok' : rtp >= 0.6 ? 'warn' : 'bad'});font-weight:600`, text: rtp == null ? '—' : rtp.toFixed(2) + '%' }),
+        el('td', {}, r.zip_verdict ? el('span', { class: 'pill ' + r.zip_verdict, text: `${f1(r.zip_score)} ${r.zip_verdict}` }) : el('span', { class: 'sub', text: 'not scored' })),
+        el('td', { class: 'hide-sm', text: r.status || '—' })));
+    });
+    const e = $('#lempty');
+    e.textContent = '';
+    if (!L.length) { e.append(el('b', { text: 'No listings saved yet' }), 'Run the skill on a listing URL and the property appears here, linked to its ZIP.'); e.hidden = false; }
+    else if (!list.length) { e.append(el('b', { text: 'No listings match these filters' }), `${L.length} saved in total. Loosen a filter to see them.`); e.hidden = false; }
+    else e.hidden = true;
+  }
+
+  // ---------- events
+  function setTab(name) {
+    const isL = name === 'listings';
+    $('#view-ranking').hidden = isL; $('#view-listings').hidden = !isL;
+    $('#tab-ranking').setAttribute('aria-selected', String(!isL)); $('#tab-listings').setAttribute('aria-selected', String(isL));
+    history.replaceState(null, '', '#' + name + (S.zip && !isL ? '&zip=' + S.zip : ''));
+  }
+  $('#tab-ranking').onclick = () => setTab('ranking');
+  $('#tab-listings').onclick = () => setTab('listings');
+  $('#month').onchange = () => { store.set('month', $('#month').value); loadRanking().catch((e) => showError(e.message)); };
+  $('#lens').onchange = () => { store.set('lens', $('#lens').value); renderListings(); loadRanking().catch((e) => showError(e.message)); };
+  $('#refresh').onclick = () => boot();
+  $('#rank-q').oninput = (e) => { S.q = e.target.value; renderRanking(); };
+  document.querySelectorAll('.chip').forEach((c) => c.onclick = () => {
+    const v = c.dataset.v; S.verdicts.has(v) ? S.verdicts.delete(v) : S.verdicts.add(v);
+    c.setAttribute('aria-pressed', String(S.verdicts.has(v))); renderRanking();
+  });
+  document.querySelectorAll('#rank th button').forEach((b) => b.onclick = () => {
+    const k = b.parentElement.dataset.k; S.rankSort = { k, dir: S.rankSort.k === k ? -S.rankSort.dir : (k === 'overall_score' || k === 'score_change' || k === 'est_monthly_rent' ? -1 : 1) }; renderRanking();
+  });
+  document.querySelectorAll('#lt th button').forEach((b) => b.onclick = () => {
+    const k = b.parentElement.dataset.k; S.lSort = { k, dir: S.lSort.k === k ? -S.lSort.dir : 1 }; renderListings();
+  });
+  ['#lq', '#lv', '#ls', '#lp', '#lb'].forEach((s) => $(s).addEventListener('input', renderListings));
+  ['lg1', 'lg2', 'lg3'].forEach((id, i) => { document.getElementById(id).style.background = tint([9, 5, 2][i]); });
+
+  setTab(location.hash.startsWith('#listings') ? 'listings' : 'ranking');
+  boot();
+})();
+</script>
+</body>
+</html>
