@@ -184,6 +184,7 @@ summary { cursor: pointer; font-weight: 600; font-size: 13px; }
   </div>
   <label class="ctl" for="month">Month <select id="month"></select></label>
   <label class="ctl" for="lens" title="Both lenses are scored for every ZIP; this picks which one ranks the list">Rank by <select id="lens"></select></label>
+  <label class="ctl" for="state" title="Show only ZIPs and listings in one state">State <select id="state"><option value="">All states</option></select></label>
   <span class="db" id="db"><i></i><span>Connecting…</span></span>
   <button class="refresh" id="refresh" title="Reload from the database">Refresh</button>
 </div></div>
@@ -218,7 +219,7 @@ summary { cursor: pointer; font-weight: 600; font-size: 13px; }
             <tbody></tbody>
           </table>
         </div>
-        <div class="empty" id="rank-empty" hidden><b>No evaluations for this month and lens</b>Pick another month or lens, or run the skill on some ZIPs.</div>
+        <div class="empty" id="rank-empty" hidden></div>
       </section>
       <aside class="card sticky" id="detail"><div class="empty"><b>Select a ZIP</b>Its indicators, history and sources appear here.</div></aside>
     </div>
@@ -390,7 +391,20 @@ summary { cursor: pointer; font-weight: 600; font-size: 13px; }
   // ---------- state
   const S = { overview: null, ranking: null, detail: null, listings: null, zip: null,
               rankSort: { k: 'rank_in_month', dir: 1 }, verdicts: new Set(), q: '',
-              lSort: { k: 'list_price', dir: 1 }, thresholds: { Buy: 70, Watch: 50 } };
+              lSort: { k: 'list_price', dir: 1 }, thresholds: { Buy: 70, Watch: 50 }, state: store.get('state', '') };
+
+  // ---------- state filter (one choice for both tabs)
+  const inState = (r) => !S.state || r.state === S.state;
+  function fillStates() {
+    const counts = new Map();
+    ((S.ranking && S.ranking.rows) || []).forEach((r) => { if (r.state) counts.set(r.state, (counts.get(r.state) || 0) + 1); });
+    (S.listings || []).forEach((r) => { if (r.state && !counts.has(r.state)) counts.set(r.state, 0); });
+    if (S.state && S.ranking && !counts.has(S.state)) { S.state = ''; store.set('state', ''); }  // only once the ZIP list is in
+    const sel = $('#state'); sel.textContent = '';
+    sel.append(el('option', { value: '', text: 'All states' }));
+    [...counts.keys()].sort().forEach((st) => sel.append(el('option', { value: st, text: counts.get(st) ? `${st} (${counts.get(st)})` : st })));
+    sel.value = S.state;
+  }
 
   function showError(msg) {
     const b = $('#banner'); b.hidden = !msg; b.textContent = '';
@@ -427,7 +441,8 @@ summary { cursor: pointer; font-weight: 600; font-size: 13px; }
     if (!m) { S.ranking = { rows: [], grid: [], indicators: [] }; renderRanking(); return; }
     S.ranking = await api(`ranking?month=${encodeURIComponent(m)}&lens=${encodeURIComponent(l)}`);
     if (S.ranking.thresholds) S.thresholds = S.ranking.thresholds;
-    const rows = S.ranking.rows;
+    fillStates();
+    const rows = S.ranking.rows.filter(inState);
     const wanted = S.zip || (location.hash.match(/zip=(\d{5})/) || [])[1];
     S.zip = rows.some((r) => r.zip === wanted) ? wanted : (rows[0] && rows[0].zip) || null;
     renderRanking();
@@ -441,7 +456,7 @@ summary { cursor: pointer; font-weight: 600; font-size: 13px; }
     if (zip === S.zip) renderDetail();
   }
 
-  async function loadListings() { S.listings = await api('listings'); renderListings(); }
+  async function loadListings() { S.listings = await api('listings'); fillStates(); renderListings(); }
 
   function pick(zip) {
     S.zip = zip;
@@ -453,7 +468,7 @@ summary { cursor: pointer; font-weight: 600; font-size: 13px; }
   // ---------- ranking
   function renderRanking() {
     const R = S.ranking || { rows: [], grid: [], indicators: [] };
-    const rows = R.rows;
+    const rows = R.rows.filter(inState);
     // tiles
     const t = $('#tiles'); t.textContent = '';
     const cnt = (v) => rows.filter((r) => r.verdict === v).length;
@@ -461,7 +476,7 @@ summary { cursor: pointer; font-weight: 600; font-size: 13px; }
     const movers = rows.filter((r) => r.score_change != null).sort((a, b) => Math.abs(b.score_change) - Math.abs(a.score_change));
     const tile = (k, v, s, color) => el('div', { class: 'tile' }, el('span', { class: 'k', text: k }), el('span', { class: 'v', text: v, style: color ? `color:${color}` : null }), s ? el('span', { class: 's', text: s }) : null);
     t.append(
-      tile('ZIPs scored', String(rows.length), months($('#month').value)),
+      tile('ZIPs scored', String(rows.length), [months($('#month').value), S.state].filter(Boolean).join(' · ')),
       tile(`Buy (${S.thresholds.Buy}+)`, String(cnt('Buy')), null, 'var(--ok)'),
       tile(`Watch (${S.thresholds.Watch}–${S.thresholds.Buy - 1})`, String(cnt('Watch')), null, 'var(--warn)'),
       tile(`Avoid (under ${S.thresholds.Watch})`, String(cnt('Avoid')), null, 'var(--bad)'),
@@ -504,7 +519,11 @@ summary { cursor: pointer; font-weight: 600; font-size: 13px; }
       );
       tb.append(tr);
     });
-    $('#rank-empty').hidden = rows.length > 0;
+    const re = $('#rank-empty'); re.textContent = '';
+    if (!R.rows.length) re.append(el('b', { text: 'No evaluations for this month and lens' }), 'Pick another month or lens, or run the skill on some ZIPs.');
+    else if (!rows.length) re.append(el('b', { text: `No ZIPs in ${S.state} this month` }), 'Pick another state or All states.');
+    else if (!list.length) re.append(el('b', { text: 'No ZIPs match these filters' }), 'Clear the search or verdict buttons to see them.');
+    re.hidden = !!list.length;
     renderHeat(R, rows);
   }
 
@@ -689,7 +708,7 @@ summary { cursor: pointer; font-weight: 600; font-size: 13px; }
     const q = $('#lq').value.trim().toLowerCase(), v = $('#lv').value, st = $('#ls').value;
     const maxP = num($('#lp').value), minB = num($('#lb').value);
     let list = L.filter((r) => (!q || [r.address, r.zip, r.city, r.state].join(' ').toLowerCase().includes(q)) &&
-      (!v || r.zip_verdict === v) && (!st || r.status === st) &&
+      inState(r) && (!v || r.zip_verdict === v) && (!st || r.status === st) &&
       (maxP == null || (r.list_price != null && num(r.list_price) <= maxP)) && (minB == null || (r.beds != null && num(r.beds) >= minB)));
     const { k, dir } = S.lSort;
     list = list.slice().sort((a, b) => {
@@ -733,6 +752,12 @@ summary { cursor: pointer; font-weight: 600; font-size: 13px; }
   $('#month').onchange = () => { store.set('month', $('#month').value); loadRanking().catch((e) => showError(e.message)); };
   $('#lens').onchange = () => { store.set('lens', $('#lens').value); renderListings(); loadRanking().catch((e) => showError(e.message)); };
   $('#refresh').onclick = () => boot();
+  $('#state').onchange = () => {
+    S.state = $('#state').value; store.set('state', S.state);
+    const rows = ((S.ranking && S.ranking.rows) || []).filter(inState);
+    if (rows.length && !rows.some((r) => r.zip === S.zip)) { pick(rows[0].zip); } else renderRanking();
+    renderListings();
+  };
   $('#rank-q').oninput = (e) => { S.q = e.target.value; renderRanking(); };
   document.querySelectorAll('.chip').forEach((c) => c.onclick = () => {
     const v = c.dataset.v; S.verdicts.has(v) ? S.verdicts.delete(v) : S.verdicts.add(v);
